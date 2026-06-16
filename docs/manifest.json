@@ -1,0 +1,14 @@
+{
+  "name": "World Cup 2026 Tracker",
+  "version": "1.0.0",
+  "home_assistant_domain": "",
+  "new_install_prompt_erase": true,
+  "builds": [
+    {
+      "chipFamily": "ESP32-S3",
+      "parts": [
+        { "path": "firmware-merged.bin", "offset": 0 }
+      ]
+    }
+  ]
+}

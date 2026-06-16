@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>World Cup 2026 Tracker — Web Installer</title>
+  <meta name="description" content="Flash the World Cup 2026 Tracker firmware to your Waveshare ESP32-S3-Touch-LCD-1.28 straight from the browser.">
+  <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js"></script>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; padding: 24px;
+      background: #0a0e15; color: #e6edf3;
+      font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+      display: flex; justify-content: center;
+    }
+    .card {
+      max-width: 560px; width: 100%;
+      background: #121a26; border: 1px solid #243043;
+      border-radius: 18px; padding: 28px 26px;
+    }
+    h1 { font-size: 26px; margin: 0 0 4px; }
+    .sub { color: #8b98a9; margin: 0 0 22px; font-size: 15px; }
+    ol { line-height: 1.7; padding-left: 20px; }
+    code {
+      background: #0a0e15; border: 1px solid #243043;
+      border-radius: 6px; padding: 1px 6px; font-size: 13px;
+    }
+    .cta { text-align: center; margin: 26px 0 8px; }
+    .note {
+      margin-top: 22px; padding: 14px 16px;
+      background: #0a0e15; border: 1px solid #243043; border-radius: 12px;
+      font-size: 13px; color: #8b98a9;
+    }
+    a { color: #58a6ff; }
+    .amber { color: #ffb648; }
+    esp-web-install-button { --esp-tools-button-color: #ffffff; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>⚽ World Cup 2026 Tracker</h1>
+    <p class="sub">Flash the firmware to your Waveshare ESP32-S3-Touch-LCD-1.28 — right from this page.</p>
+
+    <ol>
+      <li>Use <b>Chrome</b> or <b>Edge</b> on a desktop (they support Web Serial).</li>
+      <li>Plug the board into your computer with a USB-C cable.</li>
+      <li>Click <b>Connect</b> below and choose the serial port.</li>
+      <li>Click <b>Install</b> and wait — it takes about a minute.</li>
+    </ol>
+
+    <div class="cta">
+      <esp-web-install-button manifest="./manifest.json">
+        <button slot="activate" style="font-size:16px;font-weight:700;padding:13px 26px;border:0;border-radius:10px;background:#2ea043;color:#fff;cursor:pointer;">
+          Connect &amp; Install
+        </button>
+        <span slot="unsupported" class="amber">
+          Your browser doesn't support Web Serial — please use desktop Chrome or Edge.
+        </span>
+        <span slot="not-allowed" class="amber">
+          This page must be served over HTTPS to flash.
+        </span>
+      </esp-web-install-button>
+    </div>
+
+    <div class="note">
+      <b>After flashing:</b> the tracker creates a Wi-Fi hotspot called
+      <code>WorldCup-Setup</code>. Join it, then enter your Wi-Fi and a free
+      <a href="https://www.football-data.org/client/register">football-data.org</a>
+      token. Full instructions are in the
+      <a href="https://github.com/TurboTime29/worldcup-tracker#first-time-setup-on-the-device">README</a>.
+      <br><br>
+      Your Wi-Fi password and API token are stored only on the device and are
+      never part of this firmware.
+    </div>
+  </div>
+</body>
+</html>
