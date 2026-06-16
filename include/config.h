@@ -84,11 +84,13 @@ constexpr int kMaxMatches = 104;           // whole-tournament fixture list (WC 
 constexpr size_t kApiKeyMaxLen = 80;       // football-data tokens are ~40 chars
 
 // --- Poll cadence ---
-// To minimize API calls: fetch once at boot, then DON'T poll while nothing is
-// live — we already have the schedule, so we only start polling again once an
-// upcoming match's kickoff time has arrived. While a match is live, poll fast.
+// To minimize API calls: fetch the whole tournament at boot, then refresh it a
+// few times a day so newly-scheduled fixtures (e.g. knockout matchups once the
+// teams are known) show up. While a match is live we poll fast, and we also
+// poll right after an upcoming kickoff time passes to catch it going live.
 constexpr unsigned long kPollLiveMs = 120000UL;          // 2 min: a match is live
 constexpr unsigned long kPollKickoffCheckMs = 120000UL;  // 2 min: a kickoff time has passed
+constexpr unsigned long kPollFullRefreshMs = 21600000UL; // 6 h (~4x/day): refresh full schedule
 constexpr unsigned long kRequestTimeoutMs = 15000UL;
 
 // Between polls the (kickoff-approximated) live minute advances locally so the

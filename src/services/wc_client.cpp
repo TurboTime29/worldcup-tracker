@@ -161,12 +161,13 @@ bool shouldPollNow() {
   if (s_last_fetch_ms == 0) return true;  // first successful fetch not done yet
   const unsigned long elapsed = millis() - s_last_fetch_ms;
   if (s_any_live) return elapsed >= config::kPollLiveMs;  // live: poll fast
-  // Nothing live: stay idle (no API calls) until an upcoming kickoff arrives —
-  // then poll to catch it going live. We already have the full schedule.
+  // An upcoming kickoff time has arrived — poll to catch it going live.
   if (s_next_kickoff > 0 && time(nullptr) >= s_next_kickoff) {
     return elapsed >= config::kPollKickoffCheckMs;
   }
-  return false;
+  // Otherwise idle, but still refresh the whole schedule a few times a day so
+  // future matchups (e.g. knockout fixtures, rescheduled games) stay current.
+  return elapsed >= config::kPollFullRefreshMs;
 }
 
 // WC 2026 runs 2026-06-11 .. 2026-07-19. The full season payload (~180 KB,

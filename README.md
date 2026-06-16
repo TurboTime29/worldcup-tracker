@@ -116,8 +116,11 @@ pio run -e worldcup -t merge
 - **Data**: one `GET /v4/competitions/WC/matches` per ~7-day window, fetched at
   boot over a single reused TLS connection, parsed with a streaming
   [ArduinoJson](https://arduinojson.org/) filter into a compact match list.
-- **Polling**: to respect the free tier, it fetches once at boot and then stays
-  idle until a match is live (polls faster) or an upcoming kickoff time arrives.
+- **Polling**: to respect the free tier, it fetches the full tournament at boot
+  and then refreshes it about every 6 hours (~4×/day), so newly-scheduled
+  fixtures — like knockout matchups once the teams are known — appear
+  automatically. It polls faster while a match is live or just after a kickoff
+  time passes.
 - **Timezone**: the local UTC offset is detected once via ip-api.com; kickoff
   times and countdowns are shown in local time.
 - **Flags**: country flags are embedded as small RGB565 bitmaps generated from

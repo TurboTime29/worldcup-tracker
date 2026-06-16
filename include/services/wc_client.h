@@ -25,8 +25,9 @@ size_t matchCount();
 bool anyLive();
 
 /**
- * Poll gate. True at boot, then only when a match is live (fast cadence) or an
- * upcoming kickoff time has arrived; otherwise idle (no API calls).
+ * Poll gate. True at boot, when a match is live (fast cadence), when an upcoming
+ * kickoff time has arrived, or on a slow periodic full refresh (~4x/day) that
+ * keeps future matchups current.
  */
 bool shouldPollNow();
 
