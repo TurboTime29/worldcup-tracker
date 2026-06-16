@@ -13,3 +13,6 @@ Thumbs.db
 
 # Internal planning notes (not part of the published project)
 PLAN.md
+
+# Web-installer firmware is built and deployed by CI (.github/workflows), not committed
+docs/firmware-merged.bin

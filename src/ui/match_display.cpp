@@ -170,17 +170,30 @@ void drawFooter(const model::Match& m) {
   }
 }
 
+// Carousel-style page dots: the focused match is always the center dot, with up
+// to kSide dots fanning left (earlier matches) and right (later matches). The
+// window slides as you swipe — it does not show one dot per match. The outermost
+// dot shrinks when there are still more matches beyond the visible window.
 void drawDots(size_t index, size_t total) {
   if (total <= 1) return;
-  if (total > 9) total = 9;
-  constexpr int gap = 11;
-  const int w = static_cast<int>(total - 1) * gap;
-  int x = CX - w / 2;
-  for (size_t i = 0; i < total; ++i) {
-    const bool on = (i == index || (index >= 9 && i == 8));
-    if (on) tft.fillRoundRect(x - 4, Y_DOTS - 2, 9, 4, 2, config::kColorInk);
-    else tft.fillSmoothCircle(x, Y_DOTS, 2, 0x4208);
-    x += gap;
+  constexpr int kSide = 4;   // max dots on each side of the centered one
+  constexpr int gap = 12;
+  const int idx = static_cast<int>(index);
+  const int last = static_cast<int>(total) - 1;
+
+  const int left = idx < kSide ? idx : kSide;
+  const int right = (last - idx) < kSide ? (last - idx) : kSide;
+  const bool more_left = idx > kSide;            // earlier matches off-window
+  const bool more_right = (last - idx) > kSide;  // later matches off-window
+
+  for (int d = -left; d <= right; ++d) {
+    const int x = CX + d * gap;
+    if (d == 0) {
+      tft.fillRoundRect(x - 5, Y_DOTS - 2, 11, 4, 2, config::kColorInk);  // active
+    } else {
+      const bool edge = (d == -left && more_left) || (d == right && more_right);
+      tft.fillSmoothCircle(x, Y_DOTS, edge ? 1 : 2, 0x4208);
+    }
   }
 }
 

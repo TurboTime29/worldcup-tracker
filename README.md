@@ -111,6 +111,20 @@ pio run -e worldcup -t merge
 # -> .pio/build/worldcup/firmware-merged.bin
 ```
 
+### Releasing (maintainers)
+
+Releases are fully automated. Push a version tag and CI does the rest:
+
+```bash
+git tag v1.2.3
+git push origin v1.2.3
+```
+
+The [workflow](.github/workflows/release.yml) builds the merged firmware once,
+attaches it to a GitHub Release, and deploys that same binary to the GitHub
+Pages web installer — so the release and the flasher can never drift apart.
+Nothing about the firmware is committed to the repo.
+
 ### How it works
 
 - **Data**: one `GET /v4/competitions/WC/matches` per ~7-day window, fetched at

@@ -1,0 +1,73 @@
+name: Release & Web Installer
+
+# On every version tag (e.g. v1.2.3): build the merged firmware once, attach it
+# to a GitHub Release, and deploy the same binary to the GitHub Pages web
+# installer. One build feeds both, so the release and the flasher can't drift.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write   # create releases
+  pages: write      # deploy Pages
+  id-token: write   # Pages deployment auth
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Cache PlatformIO
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            ~/.cache/pip
+          key: pio-${{ runner.os }}-${{ hashFiles('platformio.ini') }}
+
+      - name: Install PlatformIO
+        run: pip install --upgrade platformio
+
+      - name: Build merged firmware
+        run: pio run -e worldcup -t merge
+
+      - name: Assemble web-installer site
+        run: |
+          mkdir -p site
+          cp docs/index.html site/index.html
+          version="${GITHUB_REF_NAME#v}"
+          sed "s/\"version\": *\"[^\"]*\"/\"version\": \"${version}\"/" docs/manifest.json > site/manifest.json
+          cp .pio/build/worldcup/firmware-merged.bin site/firmware-merged.bin
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: .pio/build/worldcup/firmware-merged.bin
+          generate_release_notes: true
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4
