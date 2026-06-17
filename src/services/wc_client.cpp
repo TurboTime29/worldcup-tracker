@@ -161,8 +161,10 @@ bool shouldPollNow() {
   if (s_last_fetch_ms == 0) return true;  // first successful fetch not done yet
   const unsigned long elapsed = millis() - s_last_fetch_ms;
   if (s_any_live) return elapsed >= config::kPollLiveMs;  // live: poll fast
-  // An upcoming kickoff time has arrived — poll to catch it going live.
-  if (s_next_kickoff > 0 && time(nullptr) >= s_next_kickoff) {
+  // Approaching (or past) the next kickoff — poll so the start time is freshly
+  // confirmed before we treat it as live, and to catch it actually going live.
+  if (s_next_kickoff > 0 &&
+      time(nullptr) >= s_next_kickoff - config::kKickoffPollLeadSec) {
     return elapsed >= config::kPollKickoffCheckMs;
   }
   // Otherwise idle, but still refresh the whole schedule a few times a day so

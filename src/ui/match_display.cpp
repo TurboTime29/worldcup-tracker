@@ -76,8 +76,15 @@ void drawFlag(const char* code, int cx, int yc) {
   tft.endWrite();
 }
 
+// The free API flips a match to IN_PLAY a few minutes late, so once its kickoff
+// time has passed we treat it as live (LIVE label + score) rather than leaving a
+// stale countdown on screen.
+bool matchStarted(const model::Match& m) {
+  return m.status == model::ST_UPCOMING && m.kickoff_utc <= time(nullptr);
+}
+
 void drawStatus(const model::Match& m) {
-  if (m.status == model::ST_LIVE) {
+  if (m.status == model::ST_LIVE || matchStarted(m)) {
     const char* label = m.paused ? "HALF TIME" : "LIVE";
     displayFontSetBitmap(tft, &F_LABEL);
     const int tw = tft.textWidth(label);
@@ -144,6 +151,7 @@ void drawUpcomingCenter(const model::Match& m) {
 void drawFooter(const model::Match& m) {
   char buf[28];
   if (m.status == model::ST_UPCOMING) {
+    if (matchStarted(m)) return;  // kicked off — shown as live, no countdown
     // Only show a countdown when kickoff is within 24h; keep it short.
     const time_t now = time(nullptr);
     const long secs = static_cast<long>(m.kickoff_utc - now);
@@ -216,7 +224,7 @@ void draw(const model::Match& m, size_t index, size_t total) {
   drawTeam(m.home, X_HOME, hs);
   drawTeam(m.away, X_AWAY, as);
 
-  if (m.status == model::ST_UPCOMING) drawUpcomingCenter(m);
+  if (m.status == model::ST_UPCOMING && !matchStarted(m)) drawUpcomingCenter(m);
   else drawScore(m);
 
   drawFooter(m);

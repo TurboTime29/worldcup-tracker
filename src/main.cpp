@@ -36,7 +36,7 @@ Mode g_mode = Mode::Matches;
 int g_bright = 20;             // working brightness % while the settings screen is open
 char g_last_sig[80] = "";      // signature of what's on screen (skip redundant redraws)
 
-constexpr unsigned long kRedrawTickMs = 30000;   // re-check the countdown bucket
+constexpr unsigned long kRedrawTickMs = 15000;   // re-check the countdown / kickoff flip
 constexpr unsigned long kFocusCheckMs = 15000;   // re-check which match to follow
 
 /** The match the view should be on right now (matches are sorted by kickoff):
@@ -76,15 +76,21 @@ void currentSignature(char* sig, size_t cap) {
   }
   size_t idx = g_index >= n ? n - 1 : g_index;
   const model::Match& m = services::wc::matches()[idx];
-  long bucket = 0;
-  if (m.status == model::ST_UPCOMING) {
-    long secs = static_cast<long>(m.kickoff_utc - time(nullptr));
-    if (secs < 0) secs = 0;
-    bucket = secs / 300;  // 5-minute buckets
+  const time_t now = time(nullptr);
+  // Once kickoff passes we render an upcoming match as live (the API is delayed).
+  const bool started = (m.status == model::ST_UPCOMING && now >= m.kickoff_utc);
+  const int eff_status = started ? static_cast<int>(model::ST_LIVE)
+                                 : static_cast<int>(m.status);
+  // Track the *displayed* countdown value (rounded to 5 min, -1 when hidden) so
+  // the screen repaints as it ticks down and clears it at kickoff.
+  long disp = -1;
+  if (m.status == model::ST_UPCOMING && !started) {
+    const long secs = static_cast<long>(m.kickoff_utc - now);
+    if (secs > 0 && secs <= 86400) disp = ((secs + 150) / 300) * 5;
   }
   snprintf(sig, cap, "%u/%u|%d|%d|%d|%d|%ld", static_cast<unsigned>(idx),
-           static_cast<unsigned>(n), static_cast<int>(m.status), m.home.score,
-           m.away.score, static_cast<int>(m.winner), bucket);
+           static_cast<unsigned>(n), eff_status, m.home.score,
+           m.away.score, static_cast<int>(m.winner), disp);
 }
 
 void renderCurrent(bool force = false) {

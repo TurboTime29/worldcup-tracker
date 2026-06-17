@@ -96,6 +96,10 @@ constexpr unsigned long kRequestTimeoutMs = 15000UL;
 // How early the view auto-jumps to an upcoming match before its kickoff.
 constexpr long kAutoJumpLeadSec = 15 * 60;  // 15 min
 
+// Start polling this long before a kickoff so the start time is freshly
+// confirmed (catches a delayed/rescheduled match) before we treat it as live.
+constexpr long kKickoffPollLeadSec = 5 * 60;  // 5 min
+
 // Between polls the (kickoff-approximated) live minute advances locally so the
 // ring ticks smoothly; it re-bases off kickoff on every successful poll.
 
