@@ -4,6 +4,13 @@ All notable changes to this project are documented here. Versions are the tags
 that trigger a release; each adds a flashable build to the
 [web installer](https://turbotime29.github.io/worldcup-tracker/).
 
+## [1.0.6] — 2026-06-17
+
+- Fixed the **HALF TIME** label sometimes not appearing the instant the API
+  reports a match paused: the screen's repaint check now includes the paused
+  state, so a live → half-time change repaints even when the score is unchanged.
+  (The label remains entirely API-driven.)
+
 ## [1.0.5] — 2026-06-17
 
 - **Country names** now show in a small font under each team's 3-letter code
@@ -62,6 +69,7 @@ ESP32-S3-Touch-LCD-1.28.
   device and are never part of the firmware.
 - **Browser web installer** for one-click flashing.
 
+[1.0.6]: https://github.com/TurboTime29/worldcup-tracker/releases/tag/v1.0.6
 [1.0.5]: https://github.com/TurboTime29/worldcup-tracker/releases/tag/v1.0.5
 [1.0.4]: https://github.com/TurboTime29/worldcup-tracker/releases/tag/v1.0.4
 [1.0.3]: https://github.com/TurboTime29/worldcup-tracker/releases/tag/v1.0.3

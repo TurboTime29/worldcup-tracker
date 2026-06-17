@@ -88,8 +88,8 @@ void currentSignature(char* sig, size_t cap) {
     const long secs = static_cast<long>(m.kickoff_utc - now);
     if (secs > 0 && secs <= 86400) disp = ((secs + 150) / 300) * 5;
   }
-  snprintf(sig, cap, "%u/%u|%d|%d|%d|%d|%ld", static_cast<unsigned>(idx),
-           static_cast<unsigned>(n), eff_status, m.home.score,
+  snprintf(sig, cap, "%u/%u|%d|%d|%d|%d|%d|%ld", static_cast<unsigned>(idx),
+           static_cast<unsigned>(n), eff_status, m.paused ? 1 : 0, m.home.score,
            m.away.score, static_cast<int>(m.winner), disp);
 }
 
