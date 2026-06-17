@@ -134,7 +134,7 @@ void autoFollow() {
 }
 
 void refreshData(bool allow_initial_jump) {
-  if (!services::wc::fetchToday()) {
+  if (!services::wc::fetch()) {
     renderCurrent();  // surfaces "Setup needed" / "No matches"
     return;
   }

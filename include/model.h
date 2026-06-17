@@ -20,6 +20,7 @@ struct Team {
 };
 
 struct Match {
+  int id;              // football-data match id (stable key for in-place updates)
   char stage[20];      // e.g. "Group H", "Round of 32"
   Status status;
   time_t kickoff_utc;  // rendered in the user's local zone

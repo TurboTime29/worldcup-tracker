@@ -14,8 +14,10 @@
 
 namespace services::wc {
 
-/** Fetch today's matches (UTC date). Returns true on a successful refresh. */
-bool fetchToday();
+/** Refresh match data. Does a full tournament rebuild at boot and every ~6 h;
+ *  otherwise a cheap single today-window update merged in by match id. Returns
+ *  true on a successful refresh. */
+bool fetch();
 
 /** Matches from the last successful fetch (sorted by kickoff). */
 const model::Match* matches();

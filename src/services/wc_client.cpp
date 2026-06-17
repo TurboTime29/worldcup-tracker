@@ -21,7 +21,8 @@ namespace {
 
 model::Match s_matches[config::kMaxMatches];
 size_t s_count = 0;
-unsigned long s_last_fetch_ms = 0;    // last *successful* fetch
+unsigned long s_last_fetch_ms = 0;    // last *successful* fetch (full or live)
+unsigned long s_last_full_ms = 0;     // last *successful* full-tournament fetch
 unsigned long s_last_attempt_ms = 0;  // last attempt (success or fail)
 bool s_any_live = false;
 time_t s_next_kickoff = 0;            // earliest upcoming kickoff (UTC), 0 = none
@@ -130,6 +131,7 @@ void dateStr(time_t t, char out[11]) {
 /** ArduinoJson filter: pull only the fields we use. */
 void buildFilter(JsonDocument& filter) {
   JsonObject f = filter["matches"].add<JsonObject>();
+  f["id"] = true;
   f["utcDate"] = true;
   f["status"] = true;
   f["stage"] = true;
@@ -144,6 +146,55 @@ void buildFilter(JsonDocument& filter) {
   f["homeTeam"]["tla"] = true;
   f["awayTeam"]["name"] = true;
   f["awayTeam"]["tla"] = true;
+}
+
+/** Parse one API match object into m. Returns false for a TBD knockout slot. */
+bool parseMatch(JsonObjectConst item, model::Match* m) {
+  memset(m, 0, sizeof(*m));
+  m->id = item["id"] | 0;
+  m->kickoff_utc = parseIsoUtc(item["utcDate"].as<const char*>());
+  bool paused = false;
+  m->status = mapStatus(item["status"].as<const char*>(), &paused);
+  m->paused = paused;
+  m->minute = -1;
+  formatStage(item, m->stage, sizeof(m->stage));
+  parseTeam(item["homeTeam"], &m->home);
+  parseTeam(item["awayTeam"], &m->away);
+  if (m->home.code[0] == '\0' || m->away.code[0] == '\0') return false;  // TBD
+
+  JsonObjectConst score = item["score"];
+  const char* duration = score["duration"].as<const char*>();
+  m->has_shootout = duration != nullptr && !strcmp(duration, "PENALTY_SHOOTOUT");
+  if (m->status == model::ST_UPCOMING) {
+    m->home.score = -1;
+    m->away.score = -1;
+  } else {
+    m->home.score = score["fullTime"]["home"] | 0;
+    m->away.score = score["fullTime"]["away"] | 0;
+  }
+  if (m->has_shootout) {
+    m->pen_home = score["penalties"]["home"] | 0;
+    m->pen_away = score["penalties"]["away"] | 0;
+  }
+  deriveWinner(m, score["winner"].as<const char*>());
+  return true;
+}
+
+bool byKickoff(const model::Match& a, const model::Match& b) {
+  return a.kickoff_utc < b.kickoff_utc;
+}
+
+/** Recompute "any live" + the earliest upcoming kickoff over the whole list. */
+void recomputeDerived() {
+  s_any_live = false;
+  s_next_kickoff = 0;
+  for (size_t i = 0; i < s_count; ++i) {
+    if (s_matches[i].status == model::ST_LIVE) s_any_live = true;
+    if (s_matches[i].status == model::ST_UPCOMING &&
+        (s_next_kickoff == 0 || s_matches[i].kickoff_utc < s_next_kickoff)) {
+      s_next_kickoff = s_matches[i].kickoff_utc;
+    }
+  }
 }
 
 }  // namespace
@@ -169,7 +220,14 @@ bool shouldPollNow() {
   }
   // Otherwise idle, but still refresh the whole schedule a few times a day so
   // future matchups (e.g. knockout fixtures, rescheduled games) stay current.
-  return elapsed >= config::kPollFullRefreshMs;
+  return (millis() - s_last_full_ms) >= config::kPollFullRefreshMs;
+}
+
+/** A full-tournament rebuild is due at boot and every ~6 h; otherwise the cheap
+ *  today-window update keeps live scores current without re-pulling everything. */
+bool fullRefreshDue() {
+  return s_last_full_ms == 0 ||
+         (millis() - s_last_full_ms) >= config::kPollFullRefreshMs;
 }
 
 // WC 2026 runs 2026-06-11 .. 2026-07-19. The full season payload (~180 KB,
@@ -177,11 +235,11 @@ bool shouldPollNow() {
 // windows and accumulate. Each window is a small, reliable request.
 constexpr int kWindowDays = 7;
 
-/** Fetch one date window and append its matches into s_matches at *n.
- *  The HTTP client/connection is owned by the caller and reused across windows
- *  (keep-alive) so we pay the TLS handshake once, not six times. */
-void fetchWindow(HTTPClient& http, WiFiClientSecure& client, const char* from,
-                 const char* to, size_t* n, bool* any_live) {
+/** GET a date window and run `onMatch` for each parsed (non-TBD) match.
+ *  Returns false if the request failed (e.g. HTTP 429) so callers can react. */
+template <typename F>
+bool getWindow(HTTPClient& http, WiFiClientSecure& client, const char* from,
+               const char* to, F&& onMatch) {
   String url = "https://";
   url += config::kApiHost;
   url += "/v4/competitions/";
@@ -191,14 +249,14 @@ void fetchWindow(HTTPClient& http, WiFiClientSecure& client, const char* from,
   url += "&dateTo=";
   url += to;
 
-  if (!http.begin(client, url)) return;
+  if (!http.begin(client, url)) return false;
   http.addHeader("X-Auth-Token", services::settings::apiKey());
 
   const int code = http.GET();
   if (code != HTTP_CODE_OK) {
     Serial.printf("wc: window %s HTTP %d\n", from, code);
     http.end();
-    return;
+    return false;
   }
   String payload = http.getString();
   http.end();
@@ -210,47 +268,19 @@ void fetchWindow(HTTPClient& http, WiFiClientSecure& client, const char* from,
                       DeserializationOption::Filter(filter)) != DeserializationError::Ok) {
     Serial.printf("wc: window %s parse fail (%u bytes)\n", from,
                   static_cast<unsigned>(payload.length()));
-    return;
+    return false;
   }
   JsonArrayConst arr = doc["matches"].as<JsonArrayConst>();
-  if (arr.isNull()) return;
+  if (arr.isNull()) return false;
 
   for (JsonObjectConst item : arr) {
-    if (*n >= config::kMaxMatches) break;
-    model::Match& m = s_matches[*n];
-    memset(&m, 0, sizeof(m));
-
-    m.kickoff_utc = parseIsoUtc(item["utcDate"].as<const char*>());
-    bool paused = false;
-    m.status = mapStatus(item["status"].as<const char*>(), &paused);
-    m.paused = paused;
-    m.minute = -1;
-    formatStage(item, m.stage, sizeof(m.stage));
-    parseTeam(item["homeTeam"], &m.home);
-    parseTeam(item["awayTeam"], &m.away);
-    if (m.home.code[0] == '\0' || m.away.code[0] == '\0') continue;  // TBD slot
-
-    JsonObjectConst score = item["score"];
-    const char* duration = score["duration"].as<const char*>();
-    m.has_shootout = duration != nullptr && !strcmp(duration, "PENALTY_SHOOTOUT");
-    if (m.status == model::ST_UPCOMING) {
-      m.home.score = -1;
-      m.away.score = -1;
-    } else {
-      m.home.score = score["fullTime"]["home"] | 0;
-      m.away.score = score["fullTime"]["away"] | 0;
-    }
-    if (m.has_shootout) {
-      m.pen_home = score["penalties"]["home"] | 0;
-      m.pen_away = score["penalties"]["away"] | 0;
-    }
-    deriveWinner(&m, score["winner"].as<const char*>());
-    if (m.status == model::ST_LIVE) *any_live = true;
-    ++(*n);
+    model::Match m;
+    if (parseMatch(item, &m)) onMatch(m);
   }
+  return true;
 }
 
-bool fetchToday() {
+bool checkPreconditions() {
   s_last_attempt_ms = millis();
   if (!services::settings::hasApiKey()) {
     Serial.println("wc: no API token set — open the setup portal to enter one");
@@ -260,26 +290,33 @@ bool fetchToday() {
     Serial.println("wc: clock not synced yet, skipping fetch");
     return false;
   }
+  return true;
+}
+
+// Full tournament rebuild (boot + ~every 6 h): WC 2026 runs 2026-06-11.. 07-19.
+// The whole-season payload (~180 KB, chunked) won't read reliably on-device, so
+// we pull it in 7-day windows and accumulate.
+bool fetchAll() {
+  if (!checkPreconditions()) return false;
 
   const time_t season_start = tmUtcToUnix(2026, 6, 11, 0, 0, 0);
   const time_t season_end = tmUtcToUnix(2026, 7, 19, 23, 59, 59);
 
-  // One client/connection, reused across windows so the TLS handshake happens
-  // once instead of per window.
   WiFiClientSecure client;
   client.setInsecure();
   HTTPClient http;
-  http.setReuse(true);
+  http.setReuse(true);  // reuse the TLS connection across windows
   http.setTimeout(config::kRequestTimeoutMs);
 
   size_t n = 0;
-  bool any_live = false;
   for (time_t ws = season_start; ws <= season_end && n < config::kMaxMatches;
        ws += kWindowDays * 86400L) {
     char from[11], to[11];
     dateStr(ws, from);
     dateStr(ws + (kWindowDays - 1) * 86400L, to);
-    fetchWindow(http, client, from, to, &n, &any_live);
+    getWindow(http, client, from, to, [&](const model::Match& m) {
+      if (n < config::kMaxMatches) s_matches[n++] = m;
+    });
   }
 
   if (n == 0) {
@@ -287,26 +324,52 @@ bool fetchToday() {
     return false;
   }
 
-  std::sort(s_matches, s_matches + n,
-            [](const model::Match& a, const model::Match& b) {
-              return a.kickoff_utc < b.kickoff_utc;
-            });
-
-  // Earliest upcoming kickoff — when to wake up and start polling again.
-  s_next_kickoff = 0;
-  for (size_t i = 0; i < n; ++i) {
-    if (s_matches[i].status == model::ST_UPCOMING &&
-        (s_next_kickoff == 0 || s_matches[i].kickoff_utc < s_next_kickoff)) {
-      s_next_kickoff = s_matches[i].kickoff_utc;
-    }
-  }
-
+  std::sort(s_matches, s_matches + n, byKickoff);
   s_count = n;
-  s_any_live = any_live;
+  recomputeDerived();
   s_last_fetch_ms = millis();
+  s_last_full_ms = millis();
   Serial.printf("wc: %u tournament matches (%s live)\n",
-                static_cast<unsigned>(n), any_live ? "some" : "none");
+                static_cast<unsigned>(n), s_any_live ? "some" : "none");
   return true;
+}
+
+// Lightweight update used while a match is live or a kickoff is near: ONE call
+// for the games around today (yesterday..tomorrow UTC), merged into the existing
+// schedule by match id. Never rebuilds the list, so a rate-limited request can't
+// drop games — and it's a single request instead of six.
+bool fetchLiveWindow() {
+  if (!checkPreconditions()) return false;
+
+  const time_t now = time(nullptr);
+  char from[11], to[11];
+  dateStr(now - 86400L, from);
+  dateStr(now + 86400L, to);
+
+  WiFiClientSecure client;
+  client.setInsecure();
+  HTTPClient http;
+  http.setTimeout(config::kRequestTimeoutMs);
+
+  int updated = 0, added = 0;
+  const bool ok = getWindow(http, client, from, to, [&](const model::Match& m) {
+    for (size_t i = 0; i < s_count; ++i) {
+      if (s_matches[i].id == m.id) { s_matches[i] = m; ++updated; return; }
+    }
+    if (s_count < config::kMaxMatches) { s_matches[s_count++] = m; ++added; }
+  });
+  if (!ok) return false;
+
+  if (added > 0) std::sort(s_matches, s_matches + s_count, byKickoff);
+  recomputeDerived();
+  s_last_fetch_ms = millis();
+  Serial.printf("wc: live refresh (%d updated, %d new, %s live)\n", updated,
+                added, s_any_live ? "some" : "none");
+  return true;
+}
+
+bool fetch() {
+  return fullRefreshDue() ? fetchAll() : fetchLiveWindow();
 }
 
 }  // namespace services::wc

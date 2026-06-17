@@ -4,6 +4,16 @@ All notable changes to this project are documented here. Versions are the tags
 that trigger a release; each adds a flashable build to the
 [web installer](https://turbotime29.github.io/worldcup-tracker/).
 
+## [1.0.5] — 2026-06-17
+
+- **Country names** now show in a small font under each team's 3-letter code
+  (wrapping onto two lines when long), and the score sits lower on the screen.
+- **Fixed past games disappearing while a match was live.** Live updates now make
+  a single API call for the day's games and merge them into the schedule by match
+  id, instead of re-fetching the whole tournament every couple of minutes — which
+  could drop games whenever one of those requests got rate-limited. The full
+  tournament rebuild still runs at boot and every ~6 hours.
+
 ## [1.0.4] — 2026-06-17
 
 - Show a match as **LIVE the moment its kickoff time passes** (the free
@@ -52,6 +62,7 @@ ESP32-S3-Touch-LCD-1.28.
   device and are never part of the firmware.
 - **Browser web installer** for one-click flashing.
 
+[1.0.5]: https://github.com/TurboTime29/worldcup-tracker/releases/tag/v1.0.5
 [1.0.4]: https://github.com/TurboTime29/worldcup-tracker/releases/tag/v1.0.4
 [1.0.3]: https://github.com/TurboTime29/worldcup-tracker/releases/tag/v1.0.3
 [1.0.2]: https://github.com/TurboTime29/worldcup-tracker/releases/tag/v1.0.2

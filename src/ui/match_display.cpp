@@ -27,16 +27,20 @@ constexpr auto& F_LABEL = fonts::FreeSans9pt7b;       // ~12px: stage, status, f
 constexpr auto& F_CODE = fonts::FreeSansBold12pt7b;   // ~16px: codes, dash, kickoff
 constexpr auto& F_SCORE = fonts::FreeSansBold18pt7b;  // ~24px: score
 
-constexpr int Y_STAGE = 53;
-constexpr int Y_STATUS = 75;
-constexpr int Y_FLAG = 105;  // flag center
-constexpr int Y_CODE = 134;  // code center
-constexpr int Y_SCORE = 166; // score / kickoff center
-constexpr int Y_FOOTER = 192;
-constexpr int Y_DOTS = 209;
+constexpr int Y_STAGE = 42;
+constexpr int Y_STATUS = 62;
+constexpr int Y_FLAG = 87;    // flag center
+constexpr int Y_CODE = 112;   // code center
+constexpr int Y_NAME = 134;   // country name line 1 (small) under the code
+constexpr int Y_NAME2 = 148;  // country name line 2 (when it wraps)
+constexpr int Y_SCORE = 177;  // score / kickoff center (low, just above dots)
+constexpr int Y_FOOTER = 203;
+constexpr int Y_DOTS = 214;
 
-constexpr int X_HOME = 70;
-constexpr int X_AWAY = 170;
+constexpr int X_HOME = 64;
+constexpr int X_AWAY = 176;
+
+constexpr int kNameMaxW = 104;  // max name width per column before wrapping
 
 void gfx(const char* s, int x, int y, const lgfx::GFXfont* f, uint16_t fg,
          textdatum_t datum = textdatum_t::middle_center) {
@@ -116,16 +120,57 @@ void drawStatus(const model::Match& m) {
   }
 }
 
+// Country name in a small font under the code. Fits on one line if it can,
+// otherwise wraps onto a second line at the space that best balances the two
+// halves (a single over-long word is truncated to the column).
+void drawName(const char* name, int x, uint16_t color) {
+  char buf[24];
+  strncpy(buf, name, sizeof(buf) - 1);
+  buf[sizeof(buf) - 1] = '\0';
+  displayFontSetBitmap(tft, &F_LABEL);
+
+  if (tft.textWidth(buf) <= kNameMaxW) {
+    gfx(buf, x, Y_NAME, &F_LABEL, color);
+    return;
+  }
+
+  int best = -1, best_metric = 1 << 30;
+  for (int i = 0; buf[i] != '\0'; ++i) {
+    if (buf[i] != ' ') continue;
+    buf[i] = '\0';
+    const int wl = tft.textWidth(buf);
+    const int wr = tft.textWidth(buf + i + 1);
+    buf[i] = ' ';
+    if (wl <= kNameMaxW && wr <= kNameMaxW) {
+      const int metric = wl > wr ? wl : wr;  // minimize the wider line
+      if (metric < best_metric) { best_metric = metric; best = i; }
+    }
+  }
+
+  if (best < 0) {  // one long word — truncate to a single line
+    int len = static_cast<int>(strlen(buf));
+    while (len > 0 && tft.textWidth(buf) > kNameMaxW) buf[--len] = '\0';
+    gfx(buf, x, Y_NAME, &F_LABEL, color);
+    return;
+  }
+
+  char line2[24];
+  strncpy(line2, buf + best + 1, sizeof(line2) - 1);
+  line2[sizeof(line2) - 1] = '\0';
+  buf[best] = '\0';
+  gfx(buf, x, Y_NAME, &F_LABEL, color);
+  gfx(line2, x, Y_NAME2, &F_LABEL, color);
+}
+
 void drawTeam(const model::Team& t, int x, int winner_state) {
   uint16_t code_color = config::kColorInk;
-  if (winner_state == 1) code_color = config::kColorWin;
-  else if (winner_state == -1) code_color = config::kColorMuted;
+  uint16_t name_color = config::kColorMuted;
+  if (winner_state == 1) { code_color = name_color = config::kColorWin; }
+  else if (winner_state == -1) { code_color = name_color = config::kColorMuted; }
 
   drawFlag(t.code, x, Y_FLAG);  // t.code is the API tla — flags keyed the same
   gfx(t.code, x, Y_CODE, &F_CODE, code_color);
-  if (winner_state == 1) {
-    tft.fillRoundRect(x - 12, Y_CODE + 13, 24, 3, 1, config::kColorWin);
-  }
+  drawName(t.name, x, name_color);
 }
 
 void drawScore(const model::Match& m) {
