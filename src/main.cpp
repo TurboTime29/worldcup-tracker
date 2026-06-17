@@ -25,28 +25,42 @@ namespace {
 enum class Mode { Matches, Settings };
 
 size_t g_index = 0;
+size_t g_auto_focus = 0;       // the match the view auto-follows (live/next game)
 bool g_initial_jump_done = false;
 unsigned long g_wifi_down_since = 0;
 unsigned long g_last_reconnect_ms = 0;
 unsigned long g_last_tick_ms = 0;
+unsigned long g_last_focus_ms = 0;
 
 Mode g_mode = Mode::Matches;
 int g_bright = 20;             // working brightness % while the settings screen is open
 char g_last_sig[80] = "";      // signature of what's on screen (skip redundant redraws)
 
-constexpr unsigned long kRedrawTickMs = 30000;  // re-check the countdown bucket
+constexpr unsigned long kRedrawTickMs = 30000;   // re-check the countdown bucket
+constexpr unsigned long kFocusCheckMs = 15000;   // re-check which match to follow
 
-/** Boot/recenter target: a live match -> the next upcoming -> the last played.
- *  Matches are sorted by kickoff, so the first upcoming is the next game. */
-size_t chooseInitialIndex() {
+/** The match the view should be on right now (matches are sorted by kickoff):
+ *  a live match → the next upcoming once it's within the auto-jump lead →
+ *  otherwise the most recent finished result → else the first match. */
+size_t focusIndex() {
   const model::Match* ms = services::wc::matches();
   const size_t n = services::wc::matchCount();
   if (n == 0) return 0;
+  const time_t now = time(nullptr);
   for (size_t i = 0; i < n; ++i)
     if (ms[i].status == model::ST_LIVE) return i;
   for (size_t i = 0; i < n; ++i)
-    if (ms[i].status == model::ST_UPCOMING) return i;
-  return n - 1;  // tournament over → most recent match
+    if (ms[i].status == model::ST_UPCOMING) {
+      if (ms[i].kickoff_utc - now <= config::kAutoJumpLeadSec) return i;
+      break;  // earliest upcoming is still further out than the lead
+    }
+  size_t last_done = n;  // sentinel
+  for (size_t i = 0; i < n; ++i)
+    if (ms[i].status == model::ST_FINISHED) last_done = i;
+  if (last_done != n) return last_done;  // linger on the latest result
+  for (size_t i = 0; i < n; ++i)
+    if (ms[i].status == model::ST_UPCOMING) return i;  // not started yet
+  return n - 1;
 }
 
 /** Build a short signature of what the match view would show right now, so we
@@ -98,16 +112,35 @@ void renderCurrent(bool force = false) {
   ui::match::draw(services::wc::matches()[g_index], g_index, n);
 }
 
+/** Auto-advance the view as games go live/end (e.g. jump to the next match
+ *  ~15 min before kickoff). Only pulls the view along if the user is still
+ *  parked on the previously-followed match, so manual browsing isn't yanked;
+ *  the new focus is always tracked so a tap re-centers onto it. */
+void autoFollow() {
+  if (services::wc::matchCount() == 0) return;
+  const size_t f = focusIndex();
+  if (f == g_auto_focus) return;
+  if (g_index == g_auto_focus) {
+    g_index = f;
+    renderCurrent();
+  }
+  g_auto_focus = f;
+}
+
 void refreshData(bool allow_initial_jump) {
   if (!services::wc::fetchToday()) {
     renderCurrent();  // surfaces "Setup needed" / "No matches"
     return;
   }
   if (allow_initial_jump && !g_initial_jump_done) {
-    g_index = chooseInitialIndex();
+    g_index = focusIndex();
+    g_auto_focus = g_index;
     g_initial_jump_done = true;
+    renderCurrent();
+    return;
   }
-  renderCurrent();
+  autoFollow();     // new statuses may change which match to follow
+  renderCurrent();  // refresh scores etc. (no-op if nothing changed)
 }
 
 void enterSettings() {
@@ -131,7 +164,7 @@ void handleTouch() {
       if (n > 0 && g_index > 0) { --g_index; renderCurrent(); }
       break;
     case services::touch::Event::Tap:
-      if (n > 0) { g_index = chooseInitialIndex(); renderCurrent(); }
+      if (n > 0) { g_index = focusIndex(); g_auto_focus = g_index; renderCurrent(); }
       break;
     case services::touch::Event::None:
       break;
@@ -233,6 +266,13 @@ void loop() {
   // Fetch only when due (boot, a kickoff arrived, or a match is live).
   if (services::wc::shouldPollNow()) {
     refreshData(true);
+  }
+
+  // Auto-advance the view as kickoff times approach (no fetch needed — we
+  // already have the schedule, and this is time-driven).
+  if (millis() - g_last_focus_ms >= kFocusCheckMs) {
+    g_last_focus_ms = millis();
+    autoFollow();
   }
 
   // Periodic redraw so an upcoming match's countdown advances between polls.

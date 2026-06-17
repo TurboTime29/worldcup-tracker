@@ -93,6 +93,9 @@ constexpr unsigned long kPollKickoffCheckMs = 120000UL;  // 2 min: a kickoff tim
 constexpr unsigned long kPollFullRefreshMs = 21600000UL; // 6 h (~4x/day): refresh full schedule
 constexpr unsigned long kRequestTimeoutMs = 15000UL;
 
+// How early the view auto-jumps to an upcoming match before its kickoff.
+constexpr long kAutoJumpLeadSec = 15 * 60;  // 15 min
+
 // Between polls the (kickoff-approximated) live minute advances locally so the
 // ring ticks smoothly; it re-bases off kickoff on every successful poll.
 
